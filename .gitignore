@@ -1,4 +1,5 @@
 # Chặn dữ liệu database và ảnh
+data
 odoo-system/data/
 **/data/db/
 **/filestore/
