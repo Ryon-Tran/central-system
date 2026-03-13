@@ -33,6 +33,39 @@ services:
     networks:
       - central-network
 
+
+  mautic-db:
+    image: mariadb:10.11
+    container_name: mautic-database
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=MauticRootPass!123
+      - MYSQL_DATABASE=mautic
+      - MYSQL_USER=mautic_user
+      - MYSQL_PASSWORD=Mautic@123
+    volumes:
+      - ./mautic-system/data/db:/var/lib/mysql
+    networks:
+      - central-network
+
+  mautic-server:
+    image: mautic/mautic:latest
+    container_name: mautic-server
+    restart: always
+    depends_on:
+      - mautic-db
+    ports:
+      - "8014:80"
+    volumes:
+      - ./mautic-system/data/html:/var/www/html
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_USER=mautic_user
+      - MAUTIC_DB_PASSWORD=Mautic@123
+      - MAUTIC_DB_NAME=mautic
+    networks:
+      - central-network
+
 networks:
   central-network:
     driver: bridge
