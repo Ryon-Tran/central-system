@@ -1,12 +1,9 @@
-# Chặn dữ liệu database và ảnh
-data
+odoo-system/data/
 **/data/db/
-odoo-system/data/filestore/
-# Chặn các file cấu hình chứa mật khẩu nhạy cảm (nếu cần bảo mật cao)
-# .env
+**/filestore/
+mautic-system/data/html/node_modules/
+mautic-system/data/html/vendor/
 mautic-system/data/html/var/cache/
 mautic-system/data/html/var/logs/
-# Chặn các file rác của hệ thống
+mautic-system/data/db
 .DS_Store
-__pycache__/
-*.pyc
