@@ -1,3 +1,4 @@
+backup_data
 odoo-system/data/
 **/data/db/
 **/filestore/

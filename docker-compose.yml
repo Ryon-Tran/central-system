@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   odoo-db:
     image: postgres:15
@@ -27,7 +25,7 @@ services:
       - ./odoo-system/config:/etc/odoo
       - ./odoo-system/addons:/mnt/extra-addons
     environment:
-      - HOST=odoo-db
+      - HOST=odoo-database
       - USER=odoo
       - PASSWORD=Password@123
     networks:
@@ -57,12 +55,15 @@ services:
     ports:
       - "8014:80"
     volumes:
-      - ./mautic-system/data/html:/var/www/html
+      #- ./mautic-system/data/html:/var/www/html
+      - ./mautic-system/data/html_logs:/var/www/html/var/logs
     environment:
-      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_HOST=mautic-database
       - MAUTIC_DB_USER=mautic_user
       - MAUTIC_DB_PASSWORD=Mautic@123
       - MAUTIC_DB_NAME=mautic
+      - MAUTIC_RUN_HEZE_MODE=false
+      - MAUTIC_WEBROOT=/var/www/html
     networks:
       - central-network
 
