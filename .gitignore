@@ -1,3 +1,4 @@
+.env
 backup_data
 odoo-system/data/
 **/data/db/
