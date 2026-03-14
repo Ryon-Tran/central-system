@@ -21,3 +21,7 @@ matomo-system/logs/
 
 # Chặn thư mục tạm
 matomo-system/tmp/
+
+# Nested git repository (managed separately)
+paperclip-system/
+matomo-system/tmp/

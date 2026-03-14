@@ -31,7 +31,6 @@ services:
     networks:
       - central-network
 
-
   mautic-db:
     image: mariadb:10.11
     container_name: mautic-database
@@ -80,8 +79,8 @@ services:
       - WEBHOOK_URL=http://localhost:5678/
       - NODE_ENV=production
       - EXECUTIONS_DATA_PRUNE=true
-      - EXECUTIONS_DATA_MAX_AGE=168 
-      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none 
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
       - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
     volumes:
       - ./n8n-system/data:/home/node/.n8n
@@ -132,11 +131,11 @@ services:
     networks:
       - central-network
 
-# Chatwoot cần Redis để xử lý hàng đợi tin nhắn
+  # Chatwoot cần Redis để xử lý hàng đợi tin nhắn
   chatwoot-redis:
     image: redis:7.0-alpine
     container_name: chatwoot-redis
-    command: ["sh", "-c", "redis-server --requirepass \"123456\""]
+    command: [ "sh", "-c", "redis-server --requirepass \"123456\"" ]
     networks:
       - central-network
 
@@ -175,7 +174,44 @@ services:
       - ./chatwoot-system/data/storage:/app/storage
     networks:
       - central-network
-      
+      # --- PAPERCLIP AI AGENT ---
+  paperclip-db:
+    image: postgres:15-alpine
+    container_name: paperclip-database
+    restart: always
+    environment:
+      - POSTGRES_USER=paperclip
+      - POSTGRES_PASSWORD=paperclip123
+      - POSTGRES_DB=paperclip
+    volumes:
+      - ./paperclip-system/data/db:/var/lib/postgresql/data
+    networks:
+      - central-network
+
+  paperclip:
+    build:
+      context: ./paperclip-system
+      dockerfile: Dockerfile
+    container_name: paperclip-service
+    restart: always
+    ports:
+      - "9000:3100"
+    depends_on:
+      - paperclip-db
+    environment:
+      - PORT=3100
+      - DATABASE_URL=postgresql://paperclip:paperclip123@paperclip-database:5432/paperclip
+      - OPENAI_API_KEY=${PAPERCLIP_OPENAI_API_KEY}
+      - GEMINI_API_KEY=${PAPERCLIP_GEMINI_API_KEY}
+      - BETTER_AUTH_SECRET=${PAPERCLIP_AUTH_SECRET}
+      - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_JWT_SECRET}
+      - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL}
+    volumes:
+      - ./paperclip-system/data/app:/paperclip
+      - ./paperclip-system/logs:/app/logs
+    networks:
+      - central-network
+
 networks:
   central-network:
     driver: bridge
