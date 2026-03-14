@@ -201,11 +201,11 @@ services:
     environment:
       - PORT=3100
       - DATABASE_URL=postgresql://paperclip:paperclip123@paperclip-database:5432/paperclip
-      - OPENAI_API_KEY=${PAPERCLIP_OPENAI_API_KEY}
-      - GEMINI_API_KEY=${PAPERCLIP_GEMINI_API_KEY}
-      - BETTER_AUTH_SECRET=${PAPERCLIP_AUTH_SECRET}
-      - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_JWT_SECRET}
-      - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
+      - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL:-http://localhost:9000}
     volumes:
       - ./paperclip-system/data/app:/paperclip
       - ./paperclip-system/logs:/app/logs
