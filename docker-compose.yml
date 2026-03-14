@@ -87,8 +87,95 @@ services:
       - ./n8n-system/data:/home/node/.n8n
     networks:
       - central-network
+  matomo-db:
+    image: mariadb:10.11
+    container_name: matomo-database
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=MatomoRootPass!123
+      - MYSQL_DATABASE=matomodb
+      - MYSQL_USER=matomo
+      - MYSQL_PASSWORD=123456
+    volumes:
+      - ./matomo-system/data/db:/var/lib/mysql
+    networks:
+      - central-network
 
+  matomo-app:
+    image: matomo:latest
+    container_name: matomo-server
+    restart: always
+    depends_on:
+      - matomo-db
+    ports:
+      - "9999:80"
+    volumes:
+      - ./matomo-system/data/html:/var/www/html
+    environment:
+      - MATOMO_DATABASE_HOST=matomo-database
+      - MATOMO_DATABASE_DBNAME=matomodb
+      - MATOMO_DATABASE_USERNAME=matomo
+      - MATOMO_DATABASE_PASSWORD=123456
+    networks:
+      - central-network
+  metabase:
+    image: metabase/metabase:latest
+    container_name: metabase-server
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - MB_DB_TYPE=h2
+      - MB_DB_FILEPATH=/metabase-data/metabase.db
+    volumes:
+      - ./metabase-system/data:/metabase-data
+    networks:
+      - central-network
 
+# Chatwoot cần Redis để xử lý hàng đợi tin nhắn
+  chatwoot-redis:
+    image: redis:7.0-alpine
+    container_name: chatwoot-redis
+    command: ["sh", "-c", "redis-server --requirepass \"123456\""]
+    networks:
+      - central-network
+
+  # Database chuyên dụng cho Chatwoot (có hỗ trợ AI Vector)
+  chatwoot-db:
+    image: pgvector/pgvector:pg16
+    container_name: chatwoot-database
+    restart: always
+    environment:
+      - POSTGRES_DB=chatwoot
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=123456
+    volumes:
+      - ./chatwoot-system/data/db:/var/lib/postgresql/data
+    networks:
+      - central-network
+  chatwoot-server:
+    image: chatwoot/chatwoot:latest
+    container_name: chatwoot-server
+    restart: always
+    depends_on:
+      - chatwoot-db
+      - chatwoot-redis
+    ports:
+      - "3005:3000"
+    environment:
+      - NODE_ENV=production
+      - RAILS_ENV=production
+      - INSTALLATION_ENV=docker
+      - POSTGRES_HOST=chatwoot-database
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=123456
+      - REDIS_URL=redis://default:123456@chatwoot-redis:6379
+      - FRONTEND_URL=http://localhost:3005
+    volumes:
+      - ./chatwoot-system/data/storage:/app/storage
+    networks:
+      - central-network
+      
 networks:
   central-network:
     driver: bridge

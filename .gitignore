@@ -8,3 +8,16 @@ mautic-system/data/html/var/cache/
 mautic-system/data/html/var/logs/
 mautic-system/data/db
 .DS_Store
+
+# === Matomo Analytics ===
+# Chặn toàn bộ dữ liệu database và mã nguồn sinh ra khi chạy
+matomo-system/data/
+# Chặn các file cấu hình nhạy cảm (nếu bạn có copy ra ngoài)
+matomo-system/config/config.ini.php
+
+# Chặn các file log của Matomo/Nginx/Apache
+matomo-system/logs/
+*.log
+
+# Chặn thư mục tạm
+matomo-system/tmp/
