@@ -23,6 +23,7 @@ matomo-system/logs/
 # Chặn thư mục tạm
 matomo-system/tmp/
 
-# Nested git repository (managed separately)
+# Nested git repositories (managed separately)
 paperclip-system/
+signoz-system/
 matomo-system/tmp/
