@@ -82,6 +82,8 @@ services:
       - EXECUTIONS_DATA_MAX_AGE=168
       - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
       - GENERIC_TIMEZONE=Asia/Ho_Chi_Minh
+      - N8N_METRICS=true
+      - N8N_METRICS_PREFIX=n8n_
     volumes:
       - ./n8n-system/data:/home/node/.n8n
     networks:
@@ -206,9 +208,220 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
       - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL:-http://localhost:9000}
+      - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
+      - OTEL_SERVICE_NAME=paperclip-ai
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://signoz-otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_TRACES_EXPORTER=otlp
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_RESOURCE_ATTRIBUTES=service.namespace=ai-agent,deployment.environment=production
     volumes:
       - ./paperclip-system/data/app:/paperclip
       - ./paperclip-system/logs:/app/logs
+    networks:
+      - central-network
+
+  # Metrics exporter for Odoo PostgreSQL query performance
+  odoo-postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: odoo-postgres-exporter
+    restart: unless-stopped
+    depends_on:
+      - odoo-db
+    environment:
+      - DATA_SOURCE_NAME=postgresql://odoo:Password@123@odoo-database:5432/postgres?sslmode=disable
+    networks:
+      - central-network
+
+  # Container resource metrics (CPU/RAM) for alerting heavy services like Metabase
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - central-network
+
+  # Blackbox probe to monitor endpoint uptime/latency of business tools
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox-exporter
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+      - ./signoz-system/config/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+      - central-network
+
+  # --- SIGNOZ OBSERVABILITY STACK ---
+  signoz-init-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    container_name: signoz-init-clickhouse
+    restart: on-failure
+    command:
+      - bash
+      - -c
+      - |
+        version="v0.0.1"
+        node_os=$$(uname -s | tr '[:upper:]' '[:lower:]')
+        node_arch=$$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/amd64/)
+        echo "Fetching histogram-binary for $${node_os}/$${node_arch}"
+        cd /tmp
+        wget -O histogram-quantile.tar.gz "https://github.com/SigNoz/signoz/releases/download/histogram-quantile%2F$${version}/histogram-quantile_$${node_os}_$${node_arch}.tar.gz"
+        tar -xvzf histogram-quantile.tar.gz
+        mv histogram-quantile /var/lib/clickhouse/user_scripts/histogramQuantile
+    volumes:
+      - ./signoz-system/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
+    networks:
+      - central-network
+
+  signoz-zookeeper:
+    image: signoz/zookeeper:3.7.1
+    container_name: signoz-zookeeper
+    restart: unless-stopped
+    user: root
+    environment:
+      - ZOO_SERVER_ID=1
+      - ALLOW_ANONYMOUS_LOGIN=yes
+      - ZOO_AUTOPURGE_INTERVAL=1
+      - ZOO_ENABLE_PROMETHEUS_METRICS=yes
+      - ZOO_PROMETHEUS_METRICS_PORT_NUMBER=9141
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -s -m 2 http://localhost:8080/commands/ruok | grep error | grep null
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ./signoz-system/data/zookeeper:/bitnami/zookeeper
+    networks:
+      - central-network
+
+  signoz-clickhouse:
+    image: clickhouse/clickhouse-server:25.5.6
+    container_name: signoz-clickhouse
+    restart: unless-stopped
+    depends_on:
+      signoz-init-clickhouse:
+        condition: service_completed_successfully
+      signoz-zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - 0.0.0.0:8123/ping
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    ulimits:
+      nproc: 65535
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      - CLICKHOUSE_SKIP_USER_SETUP=1
+    volumes:
+      - ./signoz-system/deploy/common/clickhouse/config.xml:/etc/clickhouse-server/config.xml
+      - ./signoz-system/deploy/common/clickhouse/users.xml:/etc/clickhouse-server/users.xml
+      - ./signoz-system/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml
+      - ./signoz-system/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
+      - ./signoz-system/deploy/common/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
+      - ./signoz-system/data/clickhouse:/var/lib/clickhouse/
+    networks:
+      - central-network
+
+  signoz:
+    image: signoz/signoz:v0.115.0
+    container_name: signoz-server
+    restart: unless-stopped
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    ports:
+      - "18080:8080"
+    environment:
+      - SIGNOZ_ALERTMANAGER_PROVIDER=signoz
+      - SIGNOZ_TELEMETRYSTORE_CLICKHOUSE_DSN=tcp://signoz-clickhouse:9000
+      - SIGNOZ_SQLSTORE_SQLITE_PATH=/var/lib/signoz/signoz.db
+      - SIGNOZ_TOKENIZER_JWT_SECRET=secret
+    healthcheck:
+      test:
+        - CMD
+        - wget
+        - --spider
+        - -q
+        - localhost:8080/api/v1/health
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - ./signoz-system/data/sqlite:/var/lib/signoz/
+    networks:
+      - central-network
+
+  signoz-otel-collector:
+    image: signoz/signoz-otel-collector:v0.144.2
+    container_name: signoz-otel-collector
+    restart: unless-stopped
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - |
+        /signoz-otel-collector migrate sync check &&
+        /signoz-otel-collector --config=/etc/otel-collector-config.yaml --manager-config=/etc/manager-config.yaml --copy-path=/var/tmp/collector-config.yaml
+    environment:
+      - OTEL_RESOURCE_ATTRIBUTES=host.name=signoz-host,os.type=linux
+      - LOW_CARDINAL_EXCEPTION_GROUPING=false
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN=tcp://signoz-clickhouse:9000
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER=cluster
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION=true
+      - SIGNOZ_OTEL_COLLECTOR_TIMEOUT=10m
+    volumes:
+      - ./signoz-system/deploy/docker/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+      - ./signoz-system/deploy/common/signoz/otel-collector-opamp-config.yaml:/etc/manager-config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - central-network
+
+  signoz-telemetrystore-migrator:
+    image: signoz/signoz-otel-collector:v0.144.2
+    container_name: signoz-telemetrystore-migrator
+    restart: on-failure
+    depends_on:
+      signoz-clickhouse:
+        condition: service_healthy
+    environment:
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_DSN=tcp://signoz-clickhouse:9000
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_CLUSTER=cluster
+      - SIGNOZ_OTEL_COLLECTOR_CLICKHOUSE_REPLICATION=true
+      - SIGNOZ_OTEL_COLLECTOR_TIMEOUT=10m
+    entrypoint:
+      - /bin/sh
+    command:
+      - -c
+      - |
+        /signoz-otel-collector migrate bootstrap &&
+        /signoz-otel-collector migrate sync up &&
+        /signoz-otel-collector migrate async up
     networks:
       - central-network
 
