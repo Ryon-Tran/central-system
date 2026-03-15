@@ -208,7 +208,8 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
       - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL:-http://localhost:9000}
-      - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
+      # OTEL auto-instrument sẽ bật sau khi rebuild image với Dockerfile đã cập nhật
+      # - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
       - OTEL_SERVICE_NAME=paperclip-ai
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://signoz-otel-collector:4318
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
@@ -286,7 +287,7 @@ services:
 
   signoz-zookeeper:
     image: signoz/zookeeper:3.7.1
-    container_name: signoz-zookeeper
+    container_name: zookeeper-1
     restart: unless-stopped
     user: root
     environment:
@@ -303,13 +304,13 @@ services:
       timeout: 5s
       retries: 3
     volumes:
-      - ./signoz-system/data/zookeeper:/bitnami/zookeeper
+      - signoz-zookeeper-data:/bitnami/zookeeper
     networks:
       - central-network
 
   signoz-clickhouse:
     image: clickhouse/clickhouse-server:25.5.6
-    container_name: signoz-clickhouse
+    container_name: clickhouse
     restart: unless-stopped
     depends_on:
       signoz-init-clickhouse:
@@ -339,7 +340,7 @@ services:
       - ./signoz-system/deploy/common/clickhouse/custom-function.xml:/etc/clickhouse-server/custom-function.xml
       - ./signoz-system/deploy/common/clickhouse/user_scripts:/var/lib/clickhouse/user_scripts/
       - ./signoz-system/deploy/common/clickhouse/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml
-      - ./signoz-system/data/clickhouse:/var/lib/clickhouse/
+      - signoz-clickhouse-data:/var/lib/clickhouse/
     networks:
       - central-network
 
@@ -368,7 +369,7 @@ services:
       timeout: 5s
       retries: 3
     volumes:
-      - ./signoz-system/data/sqlite:/var/lib/signoz/
+      - signoz-sqlite:/var/lib/signoz/
     networks:
       - central-network
 
@@ -428,3 +429,11 @@ services:
 networks:
   central-network:
     driver: bridge
+
+volumes:
+  signoz-clickhouse-data:
+    name: signoz-clickhouse-data
+  signoz-zookeeper-data:
+    name: signoz-zookeeper-data
+  signoz-sqlite:
+    name: signoz-sqlite
