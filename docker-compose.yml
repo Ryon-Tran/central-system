@@ -13,7 +13,10 @@ services:
       - central-network
 
   odoo-server:
-    image: odoo:18.0
+    build:
+      context: ./odoo-system
+      dockerfile: Dockerfile
+    image: odoo:18.0-otel
     container_name: odoo-server
     restart: always
     depends_on:
@@ -28,6 +31,11 @@ services:
       - HOST=odoo-database
       - USER=odoo
       - PASSWORD=Password@123
+      # OpenTelemetry config
+      - OTEL_SERVICE_NAME=odoo
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://signoz-otel-collector:4317
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_PYTHON_LOG_LEVEL=info
     networks:
       - central-network
 
@@ -208,8 +216,7 @@ services:
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - PAPERCLIP_AGENT_JWT_SECRET=${PAPERCLIP_AGENT_JWT_SECRET}
       - BETTER_AUTH_BASE_URL=${PAPERCLIP_BASE_URL:-http://localhost:9000}
-      # OTEL auto-instrument sẽ bật sau khi rebuild image với Dockerfile đã cập nhật
-      # - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
+      - NODE_OPTIONS=--require @opentelemetry/auto-instrumentations-node/register
       - OTEL_SERVICE_NAME=paperclip-ai
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://signoz-otel-collector:4318
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
